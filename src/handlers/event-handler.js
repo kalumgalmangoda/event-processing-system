@@ -88,8 +88,18 @@ const sqsEventHandler = async (event) => {
   const itemsToStore = [];
 
   for (const record of event.Records) {
-    const transformedData = transformData(JSON.parse(record.body));
-    itemsToStore.push(transformedData);
+    let messageBody;
+    try {
+      messageBody = record.body;
+      const transformedData = transformData(JSON.parse(messageBody));
+      itemsToStore.push(transformedData);
+    } catch (error) {
+      LOGGER.error(`${COMPONENT}`, "Error parsing SQS message - sqsEventHandler", {
+        messageBody,
+        error: error.message,
+      });
+      continue;
+    }
   }
 
   if (itemsToStore.length > 0) {
