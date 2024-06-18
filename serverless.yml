@@ -1,0 +1,66 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: kalumgalmangoda
+# "app" enables Serverless Framework Dashboard features and sharing them with other Services.
+app: event-processing-system
+# "service" is the name of this project. This will also be added to your AWS resource names.
+service: event-processing-system
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  environment:
+    DYNAMODB_TABLE: ${self:custom.dynamoDbTableName}
+  iam:
+    role:
+      name: ${self:provider.stage}-lambdaRole
+      statements:
+        - Effect: 'Allow'
+          Resource: '*'
+          Action: 'dynamodb:*'
+        - Effect: 'Allow'
+          Resource: '*'
+          Action: 'sqs:*'
+        - Effect: 'Allow'
+          Resource: '*'
+          Action: 's3:*'
+
+custom:
+  timestamp: ${file(./timestamp.js)}
+  bucketName: s3-event-bucket-${self:provider.stage}-${self:custom.timestamp}
+  dynamoDbTableName: processed-events-${self:provider.stage}
+
+functions:
+  s3EventHandler:
+    handler: src/handlers/event-handler.s3EventHandler
+    events:
+      - s3:
+          bucket: ${self:custom.bucketName}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: uploads/
+            - suffix: .csv
+  sqsEventHandler:
+    handler: src/handlers/event-handler.sqsEventHandler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [EventQueue, Arn]
+
+resources:
+  Resources:
+    DynamoDbTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:custom.dynamoDbTableName}
+        AttributeDefinitions:
+          - AttributeName: "id"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "id"
+            KeyType: "HASH"
+        BillingMode: PAY_PER_REQUEST
+    EventQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: EventQueue
